@@ -23,5 +23,11 @@ USER app
 #Puerto que expone contenedor
 EXPOSE 3000
 
+#Actualizar la ip a nuestra instancia ec2 del back (actualemnte es la del profe, el ejemplo de la actividad 2.4)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD node -e "require('http').get('http://127.0.0.1:3000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+
 #Comando ejcutable al iniciar contenedor
 CMD ["node", "src/server.js"]
+
+
