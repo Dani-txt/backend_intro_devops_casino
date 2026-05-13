@@ -15,13 +15,13 @@ COPY . .
 FROM node:20-alpine AS runtime
 
 WORKDIR /app
-# TODO: COPY --from=builder /app/node_modules ./node_modules
-# TODO: COPY --from=builder /app/src ./src
-# TODO: COPY package.json ./
-# TODO: addgroup -S app && adduser -S app -G app
-# TODO: USER app
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/src ./src
+COPY package.json ./
+RUN addgroup -S app && adduser -S app -G app
+USER app
 #Puerto que expone contenedor
 EXPOSE 3000
 
 #Comando ejcutable al iniciar contenedor
-CMD ["node", "serc/server.js"]
+CMD ["node", "src/server.js"]
