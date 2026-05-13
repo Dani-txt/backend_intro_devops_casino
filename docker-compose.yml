@@ -1,30 +1,69 @@
 services:
   db:
     build: ./db
-    image: tareas-backend:1.0
-    container_name: tareas-backend
-    ports: ["3000:3000"]
+    image: casino-db:latest
+    container_name: casino-db
     environment:
-      - PORT=3000
-      - MENSAJE_BIENVENIDA=API de Tareas corriendo en Docker
+      POSTGRES_USER: casino
+      POSTGRES_PASSWORD: casino
+      POSTGRES_DB: casino_db
     volumes:
-      - datos-tareas:/data
-    networks: [red-devops]
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - casino-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U casino -d casino_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  backend:
+    build: .
+    image: casino-backend:latest
+    container_name: casino-backend
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: casino
+      DB_PASSWORD: casino
+      DB_NAME: casino_db
+      JWT_SECRET: {cambiar_en_produccion}
+      JWT_EXPIRES_IN: 8h
+      CORS_ORIGIN: "*"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - casino-net
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   frontend:
-    build: ./frontend
-    image: tareas-frontend:1.0
-    container_name: tareas-frontend
-    ports: ["4200:4200"]
-    volumes:
-      - ./frontend:/app            # bind mount -> hot reload
-      - /app/node_modules          # volumen anonimo para no pisar node_modules
-    depends_on: [backend]
-    networks: [red-devops]
+    build:
+      context: ../frontend_intro_devops_casino
+    image: casino-frontend:latest
+    container_name: casino-frontend
+    ports:
+      - "80:8080"
+    environment:
+      BACKEND_HOST: backend
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - casino-net
 
 networks:
-  red-devops:
+  casino-net:
     driver: bridge
 
 volumes:
-  datos-tareas:
+  pg_data:
