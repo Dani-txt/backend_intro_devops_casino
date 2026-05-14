@@ -15,13 +15,13 @@ COPY . .
 FROM node:20-alpine AS runtime
 
 WORKDIR /app
-COPY --from=builder --chown=app:app /app/node_modules ./node_modules
-COPY --from=builder --chown=app:app /app/src ./src
-COPY --chown=app:app package.json ./
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/src ./src
+COPY --chown=node:node package.json ./
 
-RUN addgroup -S app && adduser -S app -G app \ mkdir -p /data && chown -R app:app /data
+RUN mkdir -p /data && chown -R node:node /data
 
-USER app
+USER node
 #Puerto que expone contenedor
 EXPOSE 3000
 
