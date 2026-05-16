@@ -44,10 +44,12 @@ jobs:
             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} \
               | docker login --username AWS --password-stdin \
                 ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+            docker network create casino-net || true
             docker volume create pg_data || true
             docker pull "$IMAGE"
             docker rm -f casino-db || true
             docker run -d --name casino-db --restart unless-stopped \
+              --network casino-net \
               -p 5432:5432 \
               -v pg_data:/var/lib/postgresql/data \
               -e POSTGRES_USER=casino \
