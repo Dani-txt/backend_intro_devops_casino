@@ -3,6 +3,8 @@ services:
     build: ./db
     image: casino-db:latest
     container_name: casino-db
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: casino
       POSTGRES_PASSWORD: casino

@@ -1,59 +1,78 @@
-name: Build & Deploy database
+name: Deploy PostgreSQL → EKS
+
 on:
   workflow_dispatch:
   push:
     branches: [ deploy ]
-    paths: [ 'db/**', '.github/workflows/deploy-db.yml' ]
+    paths:
+      - 'db/**'
+      - 'k8s/postgres-*.yaml'
+      - '.github/workflows/deploy-db.yml'
+
+env:
+  AWS_REGION:  ${{ secrets.AWS_REGION }}
+  EKS_CLUSTER: ${{ secrets.EKS_CLUSTER_NAME }}
 
 jobs:
-  build-push-deploy:
+  deploy-postgres:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: aws-actions/configure-aws-credentials@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token:     ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region:            ${{ secrets.AWS_REGION }}
+          aws-region:            ${{ env.AWS_REGION }}
 
-      - id: ecr
+      - name: Login en Amazon ECR
+        id: ecr
         uses: aws-actions/amazon-ecr-login@v2
         with:
           mask-password: 'true'
 
-      - name: Build & push casino-db
+      # ubir postgres:16-alpine a ECR privado
+      # Los nodos no tienen acceso a Docker Hub (red privada),
+      # así que resubimos la imagen oficial a nuestro ECR.
+      # Esta operación es idempotente: si el tag ya existe, el push
+      # no hace nada relevante.
+      - name: Subir postgres a ECR
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
         run: |
-          IMAGE=$REGISTRY/casino-db
-          docker build -t $IMAGE:${{ github.sha }} -t $IMAGE:latest ./db
-          docker push $IMAGE:${{ github.sha }}
-          docker push $IMAGE:latest
+          docker pull postgres:16-alpine
+          docker tag postgres:16-alpine "$REGISTRY/casino-db:16-alpine"
+          docker push "$REGISTRY/casino-db:16-alpine"
 
-      - name: Desplegar en EC2-backend via SSM
+      - name: Instalar kubectl
         run: |
-          COMMAND_ID=$(aws ssm send-command \
-            --instance-ids "${{ secrets.EC2_BACKEND_INSTANCE_ID }}" \
-            --document-name "AWS-RunShellScript" \
-            --parameters 'commands=[
-              "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com",
-              "docker network create casino-net || true",
-              "docker volume create pg_data || true",
-              "docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/casino-db:latest",
-              "docker rm -f casino-db || true",
-              "docker run -d --name casino-db --restart unless-stopped --network casino-net -p 5432:5432 -v pg_data:/var/lib/postgresql/data -e POSTGRES_USER=casino -e POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD }} -e POSTGRES_DB=casino_db ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/casino-db:latest"
-            ]' \
-            --query "Command.CommandId" \
-            --output text)
-          
-          aws ssm wait command-executed \
-            --command-id "$COMMAND_ID" \
-            --instance-id "${{ secrets.EC2_BACKEND_INSTANCE_ID }}"
-          
-          aws ssm get-command-invocation \
-            --command-id "$COMMAND_ID" \
-            --instance-id "${{ secrets.EC2_BACKEND_INSTANCE_ID }}" \
-            --query "StandardOutputContent" \
-            --output text
+          curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl && sudo mv kubectl /usr/local/bin/kubectl
+
+      - name: Conectar kubectl al clúster
+        run: aws eks update-kubeconfig --name "$EKS_CLUSTER" --region "$AWS_REGION"
+
+      # Reemplazar imagen en el deployment antes de aplicar
+      - name: Aplicar PVC
+        run: kubectl apply -f k8s/postgres-pvc.yaml
+
+      - name: Aplicar Deployment + ConfigMap
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          sed -i "s|postgres:16-alpine|$REGISTRY/casino-db:16-alpine|g" \
+            k8s/postgres-deployment.yaml
+          kubectl apply -f k8s/postgres-deployment.yaml
+
+      - name: Aplicar Service
+        run: kubectl apply -f k8s/postgres-service.yaml
+
+      - name: Esperar que Postgres esté listo
+        run: |
+          kubectl rollout status deployment/casino-postgres --timeout=120s
+          echo "=== Estado de Postgres ==="
+          kubectl get pods -l app=casino-postgres -o wide
