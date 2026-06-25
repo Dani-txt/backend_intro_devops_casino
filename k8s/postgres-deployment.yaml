@@ -59,7 +59,7 @@ data:
     ON CONFLICT (codigo) DO NOTHING;
 
 ---
-# ── Deployment de PostgreSQL ───────────────────────────────────────────────────
+#Deployment de PostgreSQL
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -127,8 +127,7 @@ spec:
 
       volumes:
         - name: postgres-data
-          persistentVolumeClaim:
-            claimName: postgres-pvc
+          emptyDir: {}
         - name: init-sql
           configMap:
             name: postgres-init-sql
