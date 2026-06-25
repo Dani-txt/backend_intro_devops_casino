@@ -78,7 +78,7 @@ spec:
     spec:
       containers:
         - name: postgres
-          image: postgres:16-alpine
+          image: 248357130561.dkr.ecr.us-east-1.amazonaws.com/casino-db:16-alpine
           ports:
             - containerPort: 5432
 
