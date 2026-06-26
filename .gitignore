@@ -8,6 +8,3 @@ coverage
 # Claude Code
 .claude/
 CLAUDE.md
-
-#Variables de entorno
-.env
