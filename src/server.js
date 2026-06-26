@@ -39,22 +39,6 @@ app.get('/readyz', async (req, res) => {
   }
 });
 
-app.get('/livez', (req, res) => {
-  res.status(200).json({ status: 'alive', uptime: process.uptime() });
-});
-
-// Readiness: ¿el pod puede recibir tráfico ahora mismo?
-// Verifica la conexión a PostgreSQL. Si la BD no está lista, Kubernetes
-// saca el pod del balanceo (sin reiniciarlo) hasta que se recupere.
-app.get('/readyz', async (req, res) => {
-  try {
-    await pool.query('SELECT 1');
-    res.status(200).json({ status: 'ready', db: 'ok' });
-  } catch (err) {
-    res.status(503).json({ status: 'not ready', db: err.message });
-  }
-});
-
 // Bienvenida
 app.get('/', (req, res) => {
   res.json({
